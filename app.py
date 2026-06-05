@@ -293,8 +293,8 @@ with left_col:
 # Gọi AI phân tích ý định thay vì dùng từ khóa thủ công
 is_agreeing = check_intent_with_ai(client, "gemini-2.5-flash", prompt)
         
-        # Nếu khách đồng ý VÀ trong bộ nhớ ẩn đang có sẵn sản phẩm đã tư vấn trước đó -> Tự kích hoạt bỏ giỏ luôn không cần qua API
-        if is_agreeing and st.session_state.recommended_products:
+# Nếu khách đồng ý VÀ trong bộ nhớ ẩn đang có sẵn sản phẩm đã tư vấn trước đó -> Tự kích hoạt bỏ giỏ luôn không cần qua API
+if is_agreeing and st.session_state.recommended_products:
             with st.chat_message("assistant"):
                 with st.spinner("Hệ thống đang tự động bốc hàng vào giỏ cho bạn..."):
                     result_msg = add_product_to_cart(st.session_state.recommended_products)
