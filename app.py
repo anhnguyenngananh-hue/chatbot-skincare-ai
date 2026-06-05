@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
-import re
 from google import genai
 from google.genai import types
 import os
+import re
 from PIL import Image
 
 # Load environment variables from .env (if present). Try python-dotenv first,
@@ -27,6 +27,7 @@ except Exception:
         except Exception:
             pass
 
+# Helper: call the Gemini generate_content and fail fast on quota errors.
 import time
 
 def generate_content_with_retries(client, model, contents, config, max_retries=3):
@@ -59,34 +60,7 @@ def generate_content_with_retries(client, model, contents, config, max_retries=3
             if is_unavailable:
                 raise RuntimeError("Máy chủ Gemini hiện đang quá tải do lượng truy cập cao. Hệ thống đã thử lại nhưng chưa thành công, bạn hãy đợi vài giây rồi gõ lại câu hỏi nhé!") from e
             raise
-def check_intent_with_ai(client, model, prompt):
-    """Sử dụng AI để phân tích xem khách hàng có muốn thêm sản phẩm vào giỏ hay không."""
-    try:
-        system_instruction = (
-            "Bạn là một bộ phân tích ý định người dùng. Nhiệm vụ của bạn là kiểm tra xem "
-            "câu nói của người dùng có phải là một lời đồng ý, chấp nhận, hoặc yêu cầu "
-            "thêm/bỏ sản phẩm vừa được tư vấn vào giỏ hàng/hộp hàng hay không.\n"
-            "Chỉ trả về duy nhất chữ 'YES' nếu họ muốn thêm vào giỏ/chốt đơn.\n"
-            "Trả về duy nhất chữ 'NO' nếu câu nói chỉ là mô tả tình trạng da, đặt câu hỏi, "
-            "hoặc nói từ 'có' nhưng mang ý nghĩa khác (ví dụ: 'da tớ có mụn', 'có quan trọng không')."
-        )
-        
-        config = types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=0.0, # Để AI trả về kết quả chính xác và nhất quán nhất
-            max_output_tokens=5
-        )
-        
-        response = client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=config
-        )
-        
-        result = response.text.strip().upper()
-        return "YES" in result
-    except Exception:
-        return False
+
 # 1. CẤU HÌNH GIAO DIỆN CHUẨN BEAUTY & COSMETICS
 st.set_page_config(page_title="AI Skincare Consultant & Shop", layout="wide")
 
@@ -289,13 +263,18 @@ with left_col:
         knowledge_base = df_products.to_string(index=False) if not df_products.empty else "Không có dữ liệu."
         
         # Kiểm tra xem câu nói của khách có phải là đồng ý chốt đơn/bỏ giỏ hay không
-        # MỚI (Thay thế vào)
-# Gọi AI phân tích ý định thay vì dùng từ khóa thủ công
-import re
-is_agreeing = check_intent_with_ai(client, "gemini-2.5-flash", prompt)
+        AGREE_KEYWORDS = [
+            "thêm đi", "thêm vào", "cho vào giỏ", "bỏ vào giỏ", "thêm vào giỏ",
+            "được", "đồng ý", "lấy đi", "lấy hết",
+            "mua đi", "mua hết", "chốt đi", "chốt luôn", "lấy cho chị", "lấy cho mình",
+            "lấy cho t", "thêm cho t", "add đi", "lấy luôn", "mua luôn",
+            "cho chị", "cho mình", "thêm luôn", "ok thêm", "ừ thêm", "thêm cái đó",
+            "thêm mấy cái", "thêm sp", "thêm sản phẩm", "lấy sp", "muốn mua"
+        ]
+        is_agreeing = any(word in prompt.lower() for word in AGREE_KEYWORDS)
         
-# Nếu khách đồng ý VÀ trong bộ nhớ ẩn đang có sẵn sản phẩm đã tư vấn trước đó -> Tự kích hoạt bỏ giỏ luôn không cần qua API
-if is_agreeing and st.session_state.recommended_products:
+        # Nếu khách đồng ý VÀ trong bộ nhớ ẩn đang có sẵn sản phẩm đã tư vấn trước đó -> Tự kích hoạt bỏ giỏ luôn không cần qua API
+        if is_agreeing and st.session_state.recommended_products:
             with st.chat_message("assistant"):
                 with st.spinner("Hệ thống đang tự động bốc hàng vào giỏ cho bạn..."):
                     result_msg = add_product_to_cart(st.session_state.recommended_products)
@@ -304,7 +283,7 @@ if is_agreeing and st.session_state.recommended_products:
                     st.session_state.messages.append({"role": "assistant", "content": answer})
             st.rerun()
         
-elif is_agreeing and not st.session_state.recommended_products:
+        elif is_agreeing and not st.session_state.recommended_products:
             # Khách đồng ý nhưng chưa có sản phẩm trong bộ nhớ -> nhắc nhở thay vì tư vấn lại
             with st.chat_message("assistant"):
                 answer = "Em chưa xác định được sản phẩm nào để thêm vào giỏ ạ 😊 Chị mô tả tình trạng da hoặc cho em biết muốn lấy sản phẩm nào, em sẽ thêm ngay!"
@@ -313,7 +292,7 @@ elif is_agreeing and not st.session_state.recommended_products:
             st.rerun()
             
         # Nếu là câu hỏi tư vấn bình thường, gọi API tinh gọn để né lỗi Quota 429
-else:
+        else:
             prompt_he_thong = f"""
             Bạn là chuyên gia tư vấn Skincare chuyên nghiệp. Khách tên {user_name}, {user_age} tuổi, loại da: {user_skin_type}.
             {"Khách chưa biết loại da của mình - hãy hỏi thêm về tình trạng da (bóng dầu, khô, mụn...) để tư vấn phù hợp, hoặc gợi ý sản phẩm phù hợp cho nhiều loại da." if user_skin_type == "Chưa xác định loại da" else ""}
