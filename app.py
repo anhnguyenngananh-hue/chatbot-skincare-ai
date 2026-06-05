@@ -27,22 +27,66 @@ except Exception:
         except Exception:
             pass
 
-# Helper: call the Gemini generate_content and fail fast on quota errors.
-def generate_content_with_retries(client, model, contents, config, max_retries=1):
-    """Call client.models.generate_content and raise immediately if quota is exhausted."""
-    try:
-        return client.models.generate_content(model=model, contents=contents, config=config)
-    except Exception as e:
-        msg = str(e)
-        lower = msg.lower()
-        if 'resource_exhausted' in lower or 'quota' in lower or '429' in lower or 'rate limit' in lower:
-            retry_message = ''
-            m = re.search(r'please retry in\s*([0-9]+(?:\.[0-9]+)?)s', msg, re.IGNORECASE)
-            if m:
-                retry_message = f" Vui lòng thử lại sau khoảng {m.group(1)} giây."
-            raise RuntimeError(f"API Gemini đang hết quota. {retry_message} Nếu vẫn gặp lỗi, kiểm tra lại tài khoản/billing của bạn.\n{msg}") from e
-        raise
+import time
 
+def generate_content_with_retries(client, model, contents, config, max_retries=3):
+    """Gọi client.models.generate_content và tự động thử lại nếu gặp lỗi quá tải (429) hoặc sập mạng (503)."""
+    delay = 2  # Số giây đợi ban đầu trước khi thử lại
+    for attempt in range(max_retries):
+        try:
+            return client.models.generate_content(model=model, contents=contents, config=config)
+        except Exception as e:
+            msg = str(e)
+            lower = msg.lower()
+            
+            # Kiểm tra xem có phải lỗi hết quota (429) hoặc máy chủ quá tải (503) không
+            is_quota = 'resource_exhausted' in lower or 'quota' in lower or '429' in lower or 'rate limit' in lower
+            is_unavailable = 'unavailable' in lower or '503' in lower or 'high demand' in lower
+            
+            if (is_quota or is_unavailable) and attempt < max_retries - 1:
+                # Đợi một chút rồi thử lại tự động thay vì báo lỗi ngay lập tức
+                time.sleep(delay)
+                delay *= 2  # Tăng thời gian đợi ở lần sau (Exponential backoff)
+                continue
+                
+            if is_quota:
+                retry_message = ''
+                m = re.search(r'please retry in\s*([0-9]+(?:\.[0-9]+)?)s', msg, re.IGNORECASE)
+                if m:
+                    retry_message = f" Vui lòng thử lại sau khoảng {m.group(1)} giây."
+                raise RuntimeError(f"API Gemini đang hết quota.{retry_message}\n{msg}") from e
+                
+            if is_unavailable:
+                raise RuntimeError("Máy chủ Gemini hiện đang quá tải do lượng truy cập cao. Hệ thống đã thử lại nhưng chưa thành công, bạn hãy đợi vài giây rồi gõ lại câu hỏi nhé!") from e
+            raise
+def check_intent_with_ai(client, model, prompt):
+    """Sử dụng AI để phân tích xem khách hàng có muốn thêm sản phẩm vào giỏ hay không."""
+    try:
+        system_instruction = (
+            "Bạn là một bộ phân tích ý định người dùng. Nhiệm vụ của bạn là kiểm tra xem "
+            "câu nói của người dùng có phải là một lời đồng ý, chấp nhận, hoặc yêu cầu "
+            "thêm/bỏ sản phẩm vừa được tư vấn vào giỏ hàng/hộp hàng hay không.\n"
+            "Chỉ trả về duy nhất chữ 'YES' nếu họ muốn thêm vào giỏ/chốt đơn.\n"
+            "Trả về duy nhất chữ 'NO' nếu câu nói chỉ là mô tả tình trạng da, đặt câu hỏi, "
+            "hoặc nói từ 'có' nhưng mang ý nghĩa khác (ví dụ: 'da tớ có mụn', 'có quan trọng không')."
+        )
+        
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.0, # Để AI trả về kết quả chính xác và nhất quán nhất
+            max_output_tokens=5
+        )
+        
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=config
+        )
+        
+        result = response.text.strip().upper()
+        return "YES" in result
+    except Exception:
+        return False
 # 1. CẤU HÌNH GIAO DIỆN CHUẨN BEAUTY & COSMETICS
 st.set_page_config(page_title="AI Skincare Consultant & Shop", layout="wide")
 
@@ -245,15 +289,9 @@ with left_col:
         knowledge_base = df_products.to_string(index=False) if not df_products.empty else "Không có dữ liệu."
         
         # Kiểm tra xem câu nói của khách có phải là đồng ý chốt đơn/bỏ giỏ hay không
-        AGREE_KEYWORDS = [
-            "thêm đi", "thêm vào", "cho vào giỏ", "bỏ vào giỏ", "thêm vào giỏ",
-            "ừ", "ừa", "ok", "oke", "okay", "được", "đồng ý", "lấy đi", "lấy hết",
-            "mua đi", "mua hết", "chốt đi", "chốt luôn", "lấy cho chị", "lấy cho mình",
-            "lấy cho t", "thêm cho t", "add đi", "yes", "có", "lấy luôn", "mua luôn",
-            "cho chị", "cho mình", "thêm luôn", "ok thêm", "ừ thêm", "thêm cái đó",
-            "thêm mấy cái", "thêm sp", "thêm sản phẩm", "lấy sp", "muốn mua"
-        ]
-        is_agreeing = any(word in prompt.lower() for word in AGREE_KEYWORDS)
+        # MỚI (Thay thế vào)
+# Gọi AI phân tích ý định thay vì dùng từ khóa thủ công
+is_agreeing = check_intent_with_ai(client, MODEL_ID, prompt)
         
         # Nếu khách đồng ý VÀ trong bộ nhớ ẩn đang có sẵn sản phẩm đã tư vấn trước đó -> Tự kích hoạt bỏ giỏ luôn không cần qua API
         if is_agreeing and st.session_state.recommended_products:
