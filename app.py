@@ -291,7 +291,7 @@ with left_col:
         # Kiểm tra xem câu nói của khách có phải là đồng ý chốt đơn/bỏ giỏ hay không
         # MỚI (Thay thế vào)
 # Gọi AI phân tích ý định thay vì dùng từ khóa thủ công
-is_agreeing = check_intent_with_ai(client, MODEL_ID, prompt)
+is_agreeing = check_intent_with_ai(client, "gemini-2.5-flash", prompt)
         
         # Nếu khách đồng ý VÀ trong bộ nhớ ẩn đang có sẵn sản phẩm đã tư vấn trước đó -> Tự kích hoạt bỏ giỏ luôn không cần qua API
         if is_agreeing and st.session_state.recommended_products:
