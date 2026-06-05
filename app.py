@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
+import re
 from google import genai
 from google.genai import types
 import os
-import re
 from PIL import Image
 
 # Load environment variables from .env (if present). Try python-dotenv first,
