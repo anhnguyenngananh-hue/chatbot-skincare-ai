@@ -312,7 +312,7 @@ elif is_agreeing and not st.session_state.recommended_products:
             st.rerun()
             
         # Nếu là câu hỏi tư vấn bình thường, gọi API tinh gọn để né lỗi Quota 429
-        else:
+else:
             prompt_he_thong = f"""
             Bạn là chuyên gia tư vấn Skincare chuyên nghiệp. Khách tên {user_name}, {user_age} tuổi, loại da: {user_skin_type}.
             {"Khách chưa biết loại da của mình - hãy hỏi thêm về tình trạng da (bóng dầu, khô, mụn...) để tư vấn phù hợp, hoặc gợi ý sản phẩm phù hợp cho nhiều loại da." if user_skin_type == "Chưa xác định loại da" else ""}
