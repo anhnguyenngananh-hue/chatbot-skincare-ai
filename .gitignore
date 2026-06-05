@@ -1,0 +1,9 @@
+# Bảo vệ API Key - KHÔNG BAO GIỜ đẩy file này lên GitHub
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Streamlit secrets
+.streamlit/secrets.toml
