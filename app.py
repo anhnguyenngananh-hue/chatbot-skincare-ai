@@ -303,7 +303,7 @@ if is_agreeing and st.session_state.recommended_products:
                     st.session_state.messages.append({"role": "assistant", "content": answer})
             st.rerun()
         
-        elif is_agreeing and not st.session_state.recommended_products:
+elif is_agreeing and not st.session_state.recommended_products:
             # Khách đồng ý nhưng chưa có sản phẩm trong bộ nhớ -> nhắc nhở thay vì tư vấn lại
             with st.chat_message("assistant"):
                 answer = "Em chưa xác định được sản phẩm nào để thêm vào giỏ ạ 😊 Chị mô tả tình trạng da hoặc cho em biết muốn lấy sản phẩm nào, em sẽ thêm ngay!"
